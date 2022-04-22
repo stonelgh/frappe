@@ -106,6 +106,10 @@ def login_via_github(code, state):
 
 
 @frappe.whitelist(allow_guest=True)
+def login_via_wechat(code, state):
+        login_via_oauth2("wechat", code, state)
+
+@frappe.whitelist(allow_guest=True)
 def login_via_facebook(code, state):
 	login_via_oauth2("facebook", code, state, decoder=decoder_compat)
 
