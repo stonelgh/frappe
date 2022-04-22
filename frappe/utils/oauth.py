@@ -16,8 +16,10 @@ def get_oauth2_providers():
 	for provider in providers:
 		authorize_url, access_token_url = provider.authorize_url, provider.access_token_url
 		if provider.custom_base_url:
-			authorize_url = provider.base_url + provider.authorize_url
-			access_token_url = provider.base_url + provider.access_token_url
+			if not (provider.authorize_url.startswith("http://") or provider.authorize_url.startswith("https://")):
+				authorize_url = provider.base_url + provider.authorize_url
+			if not (provider.access_token_url.startswith("http://") or provider.access_token_url.startswith("https://")):
+				access_token_url = provider.base_url + provider.access_token_url
 		out[provider.name] = {
 			"flow_params": {
 				"name": provider.name,
