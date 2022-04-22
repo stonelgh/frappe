@@ -76,7 +76,6 @@ def get_oauth2_authorize_url(provider, redirect_to):
 	return flow.get_authorize_url(**data)
 
 def get_oauth2_flow(provider):
-	from rauth import OAuth2Service
 
 	# get client_id and client_secret
 	params = get_oauth_keys(provider)
@@ -87,7 +86,12 @@ def get_oauth2_flow(provider):
 	params.update(oauth2_providers[provider]["flow_params"])
 
 	# and we have setup the communication lines
-	return OAuth2Service(**params)
+	if provider == "wechat":
+		from frappe.utils.wechatauth import WechatAuthService
+		return WechatAuthService(**params)
+	else:
+		from rauth import OAuth2Service
+		return OAuth2Service(**params)
 
 def get_redirect_uri(provider):
 	keys = frappe.conf.get("{provider}_login".format(provider=provider))
@@ -116,8 +120,9 @@ def get_info_via_oauth(provider, code, decoder=None, id_token=False):
 	flow = get_oauth2_flow(provider)
 	oauth2_providers = get_oauth2_providers()
 
+	arg_key = "data" if provider != "wechat" else "params"
 	args = {
-		"data": {
+		arg_key: {
 			"code": code,
 			"redirect_uri": get_redirect_uri(provider),
 			"grant_type": "authorization_code"
@@ -145,6 +150,14 @@ def get_info_via_oauth(provider, code, decoder=None, id_token=False):
 			emails = session.get("/user/emails", params=api_endpoint_args).json()
 			email_dict = list(filter(lambda x: x.get("primary"), emails))[0]
 			info["email"] = email_dict.get("email")
+		elif provider == "wechat":
+			# parsed_access = json.loads(session.access_token_response.text)
+			# openid = parsed_access["openid"]
+			openid = info["unionid"]
+			info["id"] = openid
+			info["name"] = info["nickname"]
+			info["email"] = openid + "@oauth.wechat.com"
+			info["avatar_url"] = info["headimgurl"]
 
 	if not (info.get("email_verified") or info.get("email")):
 		frappe.throw(_("Email not verified with {0}").format(provider.title()))
@@ -171,10 +184,13 @@ def login_oauth_user(data=None, provider=None, state=None, email_id=None, key=No
 		data = json.loads(data)
 
 	if isinstance(state, str):
-		state = base64.b64decode(state)
-		state = json.loads(state.decode("utf-8"))
+		try:
+			state = base64.b64decode(state)
+			state = json.loads(state.decode("utf-8"))
+		except:
+			state = {}
 
-	if not (state and state["token"]):
+	if not (state and state["token"]) and provider != "wechat":
 		frappe.respond_as_web_page(_("Invalid Request"), _("Token is missing"), http_status_code=417)
 		return
 
@@ -263,6 +279,10 @@ def update_oauth_user(user, data, provider):
 	elif provider=="google" and not user.get_social_login_userid(provider):
 		save = True
 		user.set_social_login_userid(provider, userid=data["id"])
+
+	elif provider=="wechat" and not user.get_social_login_userid(provider):
+		save = True
+		user.set_social_login_userid(provider, userid=data["id"], username=data.get("login"))
 
 	elif provider=="github" and not user.get_social_login_userid(provider):
 		save = True
